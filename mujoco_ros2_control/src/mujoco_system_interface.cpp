@@ -678,9 +678,8 @@ MujocoSystemInterface::~MujocoSystemInterface()
 }
 
 hardware_interface::CallbackReturn
-// after humble switches from HardwareInfo to HardwareComponentInterfaceParams. This keeps it backwards compatible
-// between the two distros
-#if ROS_DISTRO_HUMBLE
+// Humble and Jazzy use on_init(HardwareInfo&); Rolling/Kilted use HardwareComponentInterfaceParams.
+#if USE_OLD_ON_INIT_API
 MujocoSystemInterface::on_init(const hardware_interface::HardwareInfo& params)
 #else
 MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterfaceParams& params)
@@ -1696,12 +1695,18 @@ bool MujocoSystemInterface::register_mujoco_actuators()
 
     // Initialize PID controllers for actuators that have them configured
     const auto initialize_position_pids = [&]() -> bool {
-// after humble has an additional argument in the PidROS constructor, and uses a different function to initialize from parameters
+// Humble: 3-arg PidROS ctor + old method names; Jazzy: 3-arg ctor + new method names;
+// Rolling/Kilted: 4-arg ctor + new method names
 #if ROS_DISTRO_HUMBLE
       actuator_data.pos_pid = std::make_shared<control_toolbox::PidROS>(
           get_node(), "pid_gains.position." + actuator_data.joint_name, false);
       actuator_data.pos_pid->initPid();
       const auto gains = actuator_data.pos_pid->getGains();
+#elif ROS_DISTRO_JAZZY
+      actuator_data.pos_pid = std::make_shared<control_toolbox::PidROS>(
+          get_node(), "pid_gains.position." + actuator_data.joint_name, false);
+      actuator_data.pos_pid->initialize_from_ros_parameters();
+      const auto gains = actuator_data.pos_pid->get_gains();
 #else
       actuator_data.pos_pid = std::make_shared<control_toolbox::PidROS>(
           get_node(), "pid_gains.position." + actuator_data.joint_name, "", false);
@@ -1712,12 +1717,18 @@ bool MujocoSystemInterface::register_mujoco_actuators()
     };
 
     const auto initialize_velocity_pids = [&]() -> bool {
-// after humble has an additional argument in the PidROS constructor, and uses a different function to initialize from parameters
+// Humble: 3-arg PidROS ctor + old method names; Jazzy: 3-arg ctor + new method names;
+// Rolling/Kilted: 4-arg ctor + new method names
 #if ROS_DISTRO_HUMBLE
       actuator_data.vel_pid = std::make_shared<control_toolbox::PidROS>(
           get_node(), "pid_gains.velocity." + actuator_data.joint_name, false);
       actuator_data.vel_pid->initPid();
       const auto gains = actuator_data.pos_pid->getGains();
+#elif ROS_DISTRO_JAZZY
+      actuator_data.vel_pid = std::make_shared<control_toolbox::PidROS>(
+          get_node(), "pid_gains.velocity." + actuator_data.joint_name, false);
+      actuator_data.vel_pid->initialize_from_ros_parameters();
+      const auto gains = actuator_data.vel_pid->get_gains();
 #else
       actuator_data.vel_pid = std::make_shared<control_toolbox::PidROS>(
           get_node(), "pid_gains.velocity." + actuator_data.joint_name, "", false);

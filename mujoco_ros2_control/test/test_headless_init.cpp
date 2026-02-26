@@ -27,6 +27,8 @@
 #include <rclcpp/rclcpp.hpp>
 
 #define ROS_DISTRO_HUMBLE (HARDWARE_INTERFACE_VERSION_MAJOR < 3)
+#define ROS_DISTRO_JAZZY (HARDWARE_INTERFACE_VERSION_MAJOR == 4)
+#define USE_OLD_ON_INIT_API (ROS_DISTRO_HUMBLE || ROS_DISTRO_JAZZY)
 
 class HeadlessInitTest : public ::testing::Test
 {
@@ -122,7 +124,7 @@ protected:
 TEST_F(HeadlessInitTest, HeadlessInitialization)
 {
   // Test that MujocoSystemInterface can be initialized in headless mode
-#if ROS_DISTRO_HUMBLE
+#if USE_OLD_ON_INIT_API
   auto result = interface_->on_init(hardware_info_);
 #else
   hardware_interface::HardwareComponentInterfaceParams params;

@@ -57,6 +57,10 @@
 #include "transmission_interface/transmission_loader.hpp"
 
 #define ROS_DISTRO_HUMBLE (HARDWARE_INTERFACE_VERSION_MAJOR < 3)
+// Jazzy has hardware_interface v4 but still uses old on_init(HardwareInfo&) API and 3-arg PidROS.
+// HardwareComponentInterfaceParams and 4-arg PidROS only exist in Rolling/Kilted (v5+).
+#define ROS_DISTRO_JAZZY (HARDWARE_INTERFACE_VERSION_MAJOR == 4)
+#define USE_OLD_ON_INIT_API (ROS_DISTRO_HUMBLE || ROS_DISTRO_JAZZY)
 
 // defining these for Humble, because they are defined elsewhere in future versions, and we use them in this file
 #if ROS_DISTRO_HUMBLE
@@ -85,9 +89,9 @@ public:
   ~MujocoSystemInterface() override;
 
   hardware_interface::CallbackReturn
-// Jazzy introduces a new HarwareComponentInterfaceParams object which doesn't exist in humble. This adds
-// compatibility by switching to the old interface, which behaves similarly
-#if ROS_DISTRO_HUMBLE
+// HardwareComponentInterfaceParams only exists in Rolling/Kilted (v5+).
+// Humble and Jazzy both use on_init(HardwareInfo&).
+#if USE_OLD_ON_INIT_API
   on_init(const hardware_interface::HardwareInfo& info) override;
 #else
   on_init(const hardware_interface::HardwareComponentInterfaceParams& params) override;
