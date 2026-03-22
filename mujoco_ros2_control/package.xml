@@ -43,5 +43,6 @@
 
   <export>
     <build_type>ament_cmake</build_type>
+    <hardware_interface plugin="${prefix}/mujoco_system_interface_plugin.xml"/>
   </export>
 </package>
