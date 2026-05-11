@@ -986,6 +986,15 @@ MujocoSystemInterface::on_init(const hardware_interface::HardwareComponentInterf
       std::bind(&MujocoSystemInterface::reset_world_callback, this, std::placeholders::_1, std::placeholders::_2));
   RCLCPP_INFO(get_logger(), "Created reset_world service at: %s/reset_world", get_node()->get_fully_qualified_name());
 
+  // Create set_equality_active service (toggle MJCF <equality> by name)
+  set_equality_active_service_ =
+      get_node()->create_service<mujoco_ros2_control_msgs::srv::SetEqualityActive>(
+          "~/set_equality_active",
+          std::bind(&MujocoSystemInterface::set_equality_active_callback, this,
+                    std::placeholders::_1, std::placeholders::_2));
+  RCLCPP_INFO(get_logger(), "Created set_equality_active service at: %s/set_equality_active",
+              get_node()->get_fully_qualified_name());
+
   // Ready cameras
   RCLCPP_INFO(get_logger(), "Initializing cameras...");
   cameras_ = std::make_unique<MujocoCameras>(get_node(), sim_mutex_, mj_data_, mj_model_, camera_publish_rate);
@@ -2632,6 +2641,77 @@ void MujocoSystemInterface::reset_world_callback(
   const std::string keyframe_str = fill_initial_state ? "initial" : ("'" + request->keyframe + "'");
   response->message = "Successfully reset the MuJoCo world to the " + keyframe_str + " state.";
 
+  RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+}
+
+void MujocoSystemInterface::set_equality_active_callback(
+    const std::shared_ptr<mujoco_ros2_control_msgs::srv::SetEqualityActive::Request> request,
+    std::shared_ptr<mujoco_ros2_control_msgs::srv::SetEqualityActive::Response> response)
+{
+  const std::unique_lock<std::recursive_mutex> lock(*sim_mutex_);
+  int eq_id = mj_name2id(mj_model_, mjOBJ_EQUALITY, request->equality_name.c_str());
+  if (eq_id == -1)
+  {
+    response->success = false;
+    response->message = "Equality '" + request->equality_name + "' not found in MJCF model.";
+    RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
+    return;
+  }
+
+  // For mjEQ_WELD activation: if requested, snapshot the current relative pose
+  // between body1 and body2 into eq_data so the weld locks the CURRENT
+  // configuration rather than the XML-default pose. Without this, activating
+  // a weld between a gripper jaw and an object that spawned far away applies
+  // a massive impulse to satisfy the original (now-incorrect) relpose.
+  if (request->active && request->relpose_from_current &&
+      mj_model_->eq_type[eq_id] == mjEQ_WELD)
+  {
+    int b1 = mj_model_->eq_obj1id[eq_id];
+    int b2 = mj_model_->eq_obj2id[eq_id];
+    if (b1 < 0 || b2 < 0)
+    {
+      response->success = false;
+      response->message = "Weld equality has invalid body ids.";
+      RCLCPP_WARN(get_logger(), "%s", response->message.c_str());
+      return;
+    }
+    // Body world poses live in mj_data->xpos (3) and mj_data->xquat (4).
+    mjtNum p1[3], q1[4], p2[3], q2[4];
+    mju_copy3(p1, mj_data_->xpos + 3 * b1);
+    mju_copy4(q1, mj_data_->xquat + 4 * b1);
+    mju_copy3(p2, mj_data_->xpos + 3 * b2);
+    mju_copy4(q2, mj_data_->xquat + 4 * b2);
+    // relpose = body1^-1 * body2  (pose of body2 expressed in body1's frame)
+    mjtNum inv_p1[3], inv_q1[4];
+    mju_negPose(inv_p1, inv_q1, p1, q1);
+    mjtNum rel_p[3], rel_q[4];
+    mju_mulPose(rel_p, rel_q, inv_p1, inv_q1, p2, q2);
+    // eq_data layout for mjEQ_WELD (mjNEQDATA = 11):
+    //   [0..2]  anchor (point on body2, in body2 local frame; leave as-is)
+    //   [3..5]  relpose position
+    //   [6..9]  relpose quaternion
+    //   [10]    torquescale (leave as-is)
+    mjtNum* d = mj_model_->eq_data + eq_id * mjNEQDATA;
+    d[3] = rel_p[0];
+    d[4] = rel_p[1];
+    d[5] = rel_p[2];
+    d[6] = rel_q[0];
+    d[7] = rel_q[1];
+    d[8] = rel_q[2];
+    d[9] = rel_q[3];
+    RCLCPP_INFO(get_logger(),
+                "Snapshotted current relpose for weld '%s': pos=[%.4f %.4f %.4f] quat=[%.4f %.4f %.4f %.4f]",
+                request->equality_name.c_str(), rel_p[0], rel_p[1], rel_p[2],
+                rel_q[0], rel_q[1], rel_q[2], rel_q[3]);
+  }
+
+  // Runtime equality enable lives on mj_data (per-equality, 0=off, 1=on).
+  // mj_model->eq_active0 is only the initial value from XML; toggling there
+  // has no effect once the sim is running.
+  mj_data_->eq_active[eq_id] = request->active ? 1 : 0;
+  response->success = true;
+  response->message = std::string("Equality '") + request->equality_name + "' set to " +
+                      (request->active ? "active" : "inactive");
   RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
 }
 

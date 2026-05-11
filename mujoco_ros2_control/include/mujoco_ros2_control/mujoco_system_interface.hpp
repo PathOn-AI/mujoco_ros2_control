@@ -31,6 +31,7 @@
 #include <hardware_interface/system_interface.hpp>
 #include <hardware_interface/types/hardware_interface_return_values.hpp>
 #include <mujoco_ros2_control_msgs/srv/reset_world.hpp>
+#include <mujoco_ros2_control_msgs/srv/set_equality_active.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <rclcpp/macros.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -283,6 +284,19 @@ private:
                             std::shared_ptr<mujoco_ros2_control_msgs::srv::ResetWorld::Response> response);
 
   /**
+   * @brief Service callback to enable/disable an MJCF <equality> by name.
+   *
+   * Looks up the equality with mj_name2id(mjOBJ_EQUALITY, name) and toggles
+   * mj_data->eq_active[id]. Primary use case: weld constraints between a
+   * gripper jaw and a graspable object, toggled on close / off on open so
+   * the object follows the gripper rigidly during pick-and-place tasks
+   * without depending on contact friction.
+   */
+  void set_equality_active_callback(
+      const std::shared_ptr<mujoco_ros2_control_msgs::srv::SetEqualityActive::Request> request,
+      std::shared_ptr<mujoco_ros2_control_msgs::srv::SetEqualityActive::Response> response);
+
+  /**
    * @brief Spins the physics simulation for the Simulate Application
    */
   void PhysicsLoop();
@@ -389,6 +403,10 @@ private:
 
   // Reset world service
   rclcpp::Service<mujoco_ros2_control_msgs::srv::ResetWorld>::SharedPtr reset_world_service_;
+
+  // Set equality active service (toggles MJCF <equality> by name at runtime)
+  rclcpp::Service<mujoco_ros2_control_msgs::srv::SetEqualityActive>::SharedPtr
+      set_equality_active_service_;
 
   // Storage for initial state (used for reset_world)
   std::vector<mjtNum> initial_qpos_;
