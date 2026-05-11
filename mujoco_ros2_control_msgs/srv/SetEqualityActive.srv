@@ -1,0 +1,11 @@
+string equality_name
+bool active
+# When true AND active=true, snapshot the current relative pose between the
+# weld's body1 and body2 into eq_data before activating. This prevents the
+# weld from applying an impulse when the bodies aren't at the XML-default
+# relative pose (e.g., gripper closed on an object that spawned far away).
+# Only meaningful for type=mjEQ_WELD.
+bool relpose_from_current
+---
+bool success
+string message
